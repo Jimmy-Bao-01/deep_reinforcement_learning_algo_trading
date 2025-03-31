@@ -60,12 +60,12 @@ def get_stock_data(ticker, start_date, end_date):
     # stock_data.set_index(stock_data['Date'], inplace=True)
     return stock_data
 
-def save_yfinance_data_to_csv(df, start_date, end_date, ticker):
+def dataframeToCSV(df, name):
     # Ensure the 'data' directory exists
     os.makedirs("data", exist_ok=True)
 
     # Format the filename
-    filename = f"data/{ticker}_{start_date}_{end_date}.csv"
+    filename = name + ".csv"
 
     # Save the DataFrame as CSV
     df.to_csv(filename, index=True)  # Ensure index (dates) is kept
@@ -84,12 +84,31 @@ def getDailyData(marketSymbol, startingDate, endingDate):
     data = pd.read_csv('data/'+marketSymbol+'_'+startingDate+'_'+endingDate+'.csv')
     return data
 
+def CSVToDataframe(name):
+    """
+    GOAL: Loading a CSV file into a dataframe.
+    
+    INPUTS:     - name: Name of the CSV file.   
+        
+    OUTPUTS:    - dataframe: Pandas dataframe loaded.
+    """
+    
+    path = name + '.csv'
+    return pd.read_csv(path,
+                        header=0,
+                        index_col='Date',
+                        parse_dates=True)
+
+
 if __name__ == "__main__":
     for stock in stocks.values():
+        filename_train = 'data/'+stock+'_'+start_validation_date+'_'+splitting_date+'.csv'
+        filename_test = 'data/'+stock+'_'+splitting_date+'_'+end_date+'.csv'
         if stock == "AAPL":
+            filename_split = 'data/'+stock+'_'+start_validation_date+'_'+splitting_date+'.csv'
             val_data = get_stock_data(stock, start_validation_date, splitting_date)
-            save_yfinance_data_to_csv(val_data, start_validation_date, splitting_date, stock)
+            dataframeToCSV(val_data, filename_split)
         training_data = get_stock_data(stock, start_date, splitting_date)
-        save_yfinance_data_to_csv(training_data, start_date, splitting_date, stock)
+        dataframeToCSV(training_data, filename_train)
         testing_data = get_stock_data(stock, splitting_date, end_date)
-        save_yfinance_data_to_csv(testing_data, splitting_date, end_date, stock)
+        dataframeToCSV(testing_data, filename_test)
