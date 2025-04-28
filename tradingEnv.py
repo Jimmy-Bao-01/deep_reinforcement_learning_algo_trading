@@ -1,11 +1,3 @@
-"""
-Goal: Implement a trading environment compatible with OpenAI Gym.
-"""
-
-###############################################################################
-################################### Imports ###################################
-###############################################################################
-
 import random
 import math
 import numpy as np
@@ -13,21 +5,9 @@ import numpy as np
 import pandas as pd
 pd.options.mode.chained_assignment = None
 
-from matplotlib import pyplot as plt
 import torch
 import torch.nn.functional as F
 
-# from dataDownloader import AlphaVantage
-# from dataDownloader import YahooFinance
-# from dataDownloader import CSVHandler
-# from fictiveStockGenerator import StockGenerator
-# from fictiveStockGenerator import linearUp, linearDown, sinusoidal, triangle
-# from dataDownloader import getDailyData, CSVToDataframe, dataframeToCSV
-
-
-###############################################################################
-################################ Global variables #############################
-###############################################################################
 
 # Default parameters related to the Epsilon-Greedy exploration technique
 epsilonStart = 1.0
@@ -74,6 +54,7 @@ def reset_data(data):
     data['Cash'] = float(money)
     data['Money'] = data['Holdings'] + data['Cash']
     data['Returns'] = 0.
+    data['NumberOfShares'] = 0
 
     return data
 
@@ -145,12 +126,11 @@ def setStartingPoint(startingPoint, data, stateLength):
     # Setting a custom starting point
     t = np.clip(startingPoint, stateLength, len(data.index))
 
-    # Set the RL variables common to every OpenAI gym environments
     state = [data['Close'][t - stateLength : t].tolist(),
-                    data['Low'][t - stateLength : t].tolist(),
-                    data['High'][t - stateLength : t].tolist(),
-                    data['Volume'][t - stateLength : t].tolist(),
-                    [data['Position'][t - 1]]]
+                data['Low'][t - stateLength : t].tolist(),
+                data['High'][t - stateLength : t].tolist(),
+                data['Volume'][t - stateLength : t].tolist(),
+                [data['Position'][t - 1]]]
     if(t == data.shape[0]):
         done = 1
     else:
@@ -304,7 +284,7 @@ def step(action, data, t, numberOfShares, transactionCosts, stateLength, epsilon
 
     # Stting of some local variables
     # t = t
-    # numberOfShares = numberOfShares
+    numberOfSharesMain = numberOfShares
     customReward = False
 
     # CASE 1: LONG POSITION
@@ -313,19 +293,19 @@ def step(action, data, t, numberOfShares, transactionCosts, stateLength, epsilon
         # Case a: Long -> Long
         if(data['Position'][t - 1] == 1):
             data['Cash'][t] = data['Cash'][t - 1]
-            data['Holdings'][t] = numberOfShares * data['Close'][t]
+            data['Holdings'][t] = numberOfSharesMain * data['Close'][t]
         # Case b: No position -> Long
         elif(data['Position'][t - 1] == 0):
-            numberOfShares = math.floor(data['Cash'][t - 1]/(data['Close'][t] * (1 + transactionCosts)))
-            data['Cash'][t] = data['Cash'][t - 1] - numberOfShares * data['Close'][t] * (1 + transactionCosts)
-            data['Holdings'][t] = numberOfShares * data['Close'][t]
+            numberOfSharesMain = math.floor(data['Cash'][t - 1]/(data['Close'][t] * (1 + transactionCosts)))
+            data['Cash'][t] = data['Cash'][t - 1] - numberOfSharesMain * data['Close'][t] * (1 + transactionCosts)
+            data['Holdings'][t] = numberOfSharesMain * data['Close'][t]
             data['Action'][t] = 1
         # Case c: Short -> Long
         else:
-            data['Cash'][t] = data['Cash'][t - 1] - numberOfShares * data['Close'][t] * (1 + transactionCosts)
-            numberOfShares = math.floor(data['Cash'][t]/(data['Close'][t] * (1 + transactionCosts)))
-            data['Cash'][t] = data['Cash'][t] - numberOfShares * data['Close'][t] * (1 + transactionCosts)
-            data['Holdings'][t] = numberOfShares * data['Close'][t]
+            data['Cash'][t] = data['Cash'][t - 1] - numberOfSharesMain * data['Close'][t] * (1 + transactionCosts)
+            numberOfSharesMain = math.floor(data['Cash'][t]/(data['Close'][t] * (1 + transactionCosts)))
+            data['Cash'][t] = data['Cash'][t] - numberOfSharesMain * data['Close'][t] * (1 + transactionCosts)
+            data['Holdings'][t] = numberOfSharesMain * data['Close'][t]
             data['Action'][t] = 1
 
     # CASE 2: SHORT POSITION
@@ -333,28 +313,28 @@ def step(action, data, t, numberOfShares, transactionCosts, stateLength, epsilon
         data['Position'][t] = -1
         # Case a: Short -> Short
         if(data['Position'][t - 1] == -1):
-            lowerBound = computeLowerBound(data['Cash'][t - 1], -numberOfShares, data['Close'][t-1], transactionCosts, epsilon)
+            lowerBound = computeLowerBound(data['Cash'][t - 1], -numberOfSharesMain, data['Close'][t-1], transactionCosts, epsilon)
             if lowerBound <= 0:
                 data['Cash'][t] = data['Cash'][t - 1]
-                data['Holdings'][t] =  - numberOfShares * data['Close'][t]
+                data['Holdings'][t] =  - numberOfSharesMain * data['Close'][t]
             else:
-                numberOfSharesToBuy = min(math.floor(lowerBound), numberOfShares)
-                numberOfShares -= numberOfSharesToBuy
+                numberOfSharesToBuy = min(math.floor(lowerBound), numberOfSharesMain)
+                numberOfSharesMain -= numberOfSharesToBuy
                 data['Cash'][t] = data['Cash'][t - 1] - numberOfSharesToBuy * data['Close'][t] * (1 + transactionCosts)
-                data['Holdings'][t] =  - numberOfShares * data['Close'][t]
+                data['Holdings'][t] =  - numberOfSharesMain * data['Close'][t]
                 customReward = True
         # Case b: No position -> Short
         elif(data['Position'][t - 1] == 0):
-            numberOfShares = math.floor(data['Cash'][t - 1]/(data['Close'][t] * (1 + transactionCosts)))
-            data['Cash'][t] = data['Cash'][t - 1] + numberOfShares * data['Close'][t] * (1 - transactionCosts)
-            data['Holdings'][t] = - numberOfShares * data['Close'][t]
+            numberOfSharesMain = math.floor(data['Cash'][t - 1]/(data['Close'][t] * (1 + transactionCosts)))
+            data['Cash'][t] = data['Cash'][t - 1] + numberOfSharesMain * data['Close'][t] * (1 - transactionCosts)
+            data['Holdings'][t] = - numberOfSharesMain * data['Close'][t]
             data['Action'][t] = -1
         # Case c: Long -> Short
         else:
-            data['Cash'][t] = data['Cash'][t - 1] + numberOfShares * data['Close'][t] * (1 - transactionCosts)
-            numberOfShares = math.floor(data['Cash'][t]/(data['Close'][t] * (1 + transactionCosts)))
-            data['Cash'][t] = data['Cash'][t] + numberOfShares * data['Close'][t] * (1 - transactionCosts)
-            data['Holdings'][t] = - numberOfShares * data['Close'][t]
+            data['Cash'][t] = data['Cash'][t - 1] + numberOfSharesMain * data['Close'][t] * (1 - transactionCosts)
+            numberOfSharesMain = math.floor(data['Cash'][t]/(data['Close'][t] * (1 + transactionCosts)))
+            data['Cash'][t] = data['Cash'][t] + numberOfSharesMain * data['Close'][t] * (1 - transactionCosts)
+            data['Holdings'][t] = - numberOfSharesMain * data['Close'][t]
             data['Action'][t] = -1
 
     # CASE 3: PROHIBITED ACTION
@@ -364,14 +344,14 @@ def step(action, data, t, numberOfShares, transactionCosts, stateLength, epsilon
     # Update the total amount of money owned by the agent, as well as the return generated
     data['Money'][t] = data['Holdings'][t] + data['Cash'][t]
     data['Returns'][t] = (data['Money'][t] - data['Money'][t-1])/data['Money'][t-1]
-
+    data['NumberOfShares'][t] = numberOfSharesMain
+    
     # Set the RL reward returned to the trading agent
     if not customReward:
         reward = data['Returns'][t]
     else:
         reward = (data['Close'][t-1] - data['Close'][t])/data['Close'][t-1]
 
-    # numberOfSharesMain = numberOfShares
     # Transition to the next trading time step
     t_state = t + 1
     state = [data['Close'][t_state - stateLength : t_state].tolist(),
@@ -421,8 +401,9 @@ def step(action, data, t, numberOfShares, transactionCosts, stateLength, epsilon
             otherCash = data['Cash'][t - 1] + numberOfShares * data['Close'][t] * (1 - transactionCosts)
             numberOfShares = math.floor(otherCash/(data['Close'][t] * (1 + transactionCosts)))
             otherCash = otherCash + numberOfShares * data['Close'][t] * (1 - transactionCosts)
-            otherHoldings = - numberOfShares * data['Close'][t]
+            otherHoldings = - numberOfSharesMain * data['Close'][t]
     otherMoney = otherHoldings + otherCash
+    
     if not customReward:
         otherReward = (otherMoney - data['Money'][t-1])/data['Money'][t-1]
     else:
@@ -435,7 +416,7 @@ def step(action, data, t, numberOfShares, transactionCosts, stateLength, epsilon
     info = {'State' : otherState, 'Reward' : otherReward, 'Done' : done}
 
     # Return the trading environment feedback to the RL trading agent
-    return state, reward, info, numberOfShares, done
+    return state, reward, info, numberOfSharesMain, done
 
 def processReward(reward):
     """
@@ -466,6 +447,7 @@ def updateTargetNetwork(iterations, mainNetwork, targetNetwork):
 
     if(iterations % targetNetworkUpdate == 0):
         targetNetwork.load_state_dict(mainNetwork.state_dict())
+    return targetNetwork
         
 def learning(iterations, done, replayMemory, mainNetwork, targetNetwork, optimizer, batchSize=batchSize):
     """
@@ -493,7 +475,6 @@ def learning(iterations, done, replayMemory, mainNetwork, targetNetwork, optimiz
         nextState = torch.tensor(nextState, dtype=torch.float, device=device)
         done = torch.tensor(done, dtype=torch.float, device=device)
 
-        # print(done)
         # Compute the current Q values returned by the policy network
         currentQValues = mainNetwork(state).gather(1, action.unsqueeze(1)).squeeze(1)
 
@@ -517,7 +498,9 @@ def learning(iterations, done, replayMemory, mainNetwork, targetNetwork, optimiz
         optimizer.step()
 
         # If required, update the target deep neural network (update frequency)
-        updateTargetNetwork(iterations, mainNetwork, targetNetwork)
+        targetNetwork = updateTargetNetwork(iterations, mainNetwork, targetNetwork)
 
         # Set back the Deep Neural Network in evaluation mode
         mainNetwork.eval()
+        
+    return mainNetwork, targetNetwork, optimizer

@@ -1,24 +1,9 @@
-# coding=utf-8
-
-"""
-Goal: Implementing a custom enhanced version of the DQN algorithm specialized
-      to algorithmic trading.
-Authors: Thibaut Théate and Damien Ernst
-Institution: University of Liège
-"""
-
-###############################################################################
-################################### Imports ###################################
-###############################################################################
-
 import random
 
-import numpy as np
 import pandas as pd
 
 from collections import deque
 from tqdm import tqdm
-from matplotlib import pyplot as plt
 
 import torch
 import torch.nn as nn
@@ -27,11 +12,6 @@ import torch.optim as optim
 import dataAugmentation
 import tradingEnv
 
-
-
-###############################################################################
-################################ Global variables #############################
-###############################################################################
 
 # Default parameters related to the DQN algorithm
 gamma = 0.4
@@ -270,9 +250,8 @@ def TDQN(stockName, startingDate, splittingDate):
         
         while done == 0:
 
-            # 3. Epsilon-Greedy Policy
+            # Epsilon-Greedy Policy
             action, _, _, iterations  = tradingEnv.chooseActionEpsilonGreedy(state, previousAction, main_network, iterations)  # random action
-            # epsilon = epsilonValue(iterations)  # Epsilon value
             # Interact with the environment with the chosen action
             nextState, reward, info, numberOfShares, done = tradingEnv.step(action, dataTrainingAugmented, t, numberOfShares, transactionCosts, stateLength, epsilon, done)
             
@@ -289,7 +268,8 @@ def TDQN(stockName, startingDate, splittingDate):
             replayMemory.push(state, otherAction, otherReward, otherNextState, otherDone)
 
             # Execute the DQN learning procedure - Update the policy/main network and the target network
-            tradingEnv.learning(iterations, done, replayMemory, main_network, target_network, optimizer)  # Learning step
+            main_network, target_network, optimizer = tradingEnv.learning(iterations, done, replayMemory, main_network, target_network, optimizer)  # Learning step
+            # tradingEnv.learning(iterations, done, replayMemory, main_network, target_network, optimizer)  # Learning step
             
             # Update the RL state
             state = nextState
@@ -326,6 +306,7 @@ def testing(dataTraining, dataTesting, main_network):
     QValues1 = []
     done = 0
     numberOfShares = 0
+    numberOfSharesTest = 0
     transactionCosts = 0.1/100
     t = stateLength
     
@@ -337,7 +318,7 @@ def testing(dataTraining, dataTesting, main_network):
             
         # Interact with the environment with the chosen action
         nextState, _, _, numberOfShares, done = tradingEnv.step(action, dataTestingSmoothed, t, numberOfShares, transactionCosts, stateLength, epsilon, done)
-        _, _, _, _, _ = tradingEnv.step(action, dataTesting, t, numberOfShares, transactionCosts, stateLength, epsilon, done)
+        _, _, _, numberOfSharesTest, _ = tradingEnv.step(action, dataTesting, t, numberOfSharesTest, transactionCosts, stateLength, epsilon, done)
         # Update the new state
         state = tradingEnv.processState(nextState, coefficients)
 
